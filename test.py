@@ -138,16 +138,22 @@ class Actor_Model:
     def __init__(self, input_shape, action_space, lr, optimizer):
         X_input = Input(input_shape)
         self.action_space = action_space
+        #spaces.Box(-0.4, 0.4, shape=(action_space/2,), dtype='float32')
+        #print(action_space)
         X = Dense(64, activation="relu", kernel_initializer=tf.random_normal_initializer(stddev=0.01))(X_input)
-        X = Dense(32, activation="elu", kernel_initializer=tf.random_normal_initializer(stddev=0.01))(X)
-        X = Dense(128, activation="relu", kernel_initializer=tf.random_normal_initializer(stddev=0.01))(X)
         X = Dense(32, activation="relu", kernel_initializer=tf.random_normal_initializer(stddev=0.01))(X)
-        output = Dense(self.action_space, activation="tanh")(X)
+        X = Dense(128, activation="relu", kernel_initializer=tf.random_normal_initializer(stddev=0.01))(X)
+        X = Dense(64, activation="relu", kernel_initializer=tf.random_normal_initializer(stddev=0.01))(X)
+        output = Dense(self.action_space, activation=self.ation)(X)
 
         self.Actor = Model(inputs = X_input, outputs = output)
         self.Actor.compile(loss=self.ppo_loss_continuous, optimizer=optimizer(lr=lr))
         #print(self.Actor.summary())
-
+    def ation(self,x):
+        #if -0.01<2*np.float32(x)/(5*x+1)<0.01:
+        #    return 20*x/(5*x+1)
+        print(x)
+        return 2*x/(5*x+1) 
     def ppo_loss_continuous(self, y_true, y_pred):
         advantages, actions, logp_old_ph, = y_true[:, :1], y_true[:, 1:1+self.action_space], y_true[:, 1+self.action_space]
         LOSS_CLIPPING = 0.2
@@ -177,23 +183,23 @@ class Critic_Model:
         old_values = Input(shape=(1,))
 
         V = Dense(64, activation="relu", kernel_initializer=tf.random_normal_initializer(stddev=0.01))(X_input)
-        V = Dense(32, activation="elu", kernel_initializer=tf.random_normal_initializer(stddev=0.01))(V)
-        V = Dense(128, activation="relu", kernel_initializer=tf.random_normal_initializer(stddev=0.01))(V)
         V = Dense(32, activation="relu", kernel_initializer=tf.random_normal_initializer(stddev=0.01))(V)
-        value = Dense(1, activation=None)(V)
+        V = Dense(128, activation="relu", kernel_initializer=tf.random_normal_initializer(stddev=0.01))(V)
+        V = Dense(64, activation="relu", kernel_initializer=tf.random_normal_initializer(stddev=0.01))(V)
+        value = Dense(8, activation=None)(V)
 
         self.Critic = Model(inputs=[X_input, old_values], outputs = value)
         self.Critic.compile(loss=[self.critic_PPO2_loss(old_values)], optimizer=optimizer(lr=lr))
 
     def critic_PPO2_loss(self, values):
         def loss(y_true, y_pred):
-            LOSS_CLIPPING = 0.2
+            LOSS_CLIPPING = 0.6
             clipped_value_loss = values + K.clip(y_pred - values, -LOSS_CLIPPING, LOSS_CLIPPING)
             v_loss1 = (y_true - clipped_value_loss) ** 2
             v_loss2 = (y_true - y_pred) ** 2
             
-            value_loss = 0.5 * K.mean(K.maximum(v_loss1, v_loss2))
-            #value_loss = K.mean((y_true - y_pred) ** 2) # standard PPO loss
+            #value_loss = 0.5 * K.mean(K.maximum(v_loss1, v_loss2))
+            value_loss = K.mean((y_true - y_pred) ** 2) # standard PPO loss
             return value_loss
         return loss
 
@@ -216,7 +222,7 @@ class PPOAgent:
         self.lr = 0.00025
         self.epochs = 10 # training epochs
         self.shuffle = True
-        self.Training_batch = 512
+        self.Training_batch = 10000000
         #self.optimizer = RMSprop
         self.optimizer = Adam
 
@@ -230,8 +236,8 @@ class PPOAgent:
         self.Actor = Actor_Model(input_shape=self.state_size, action_space = self.action_size, lr=self.lr, optimizer = self.optimizer)
         self.Critic = Critic_Model(input_shape=self.state_size, action_space = self.action_size, lr=self.lr, optimizer = self.optimizer)
         
-        self.Actor_name = f"/content/drive/My Drive/{self.env_name}_PPO_Actor.h5"
-        self.Critic_name = f"/content/drive/My Drive/{self.env_name}_PPO_Critic.h5"
+        self.Actor_name = f"/PPO_Actor.h5"
+        self.Critic_name = f"/PPO_Critic.h5"
         #self.load() # uncomment to continue training from old weights
 
         # do not change bellow
@@ -370,17 +376,20 @@ class PPOAgent:
         state = self.env.reset()
         state = np.reshape(state, [1, self.state_size[0]])
         done, score, SAVING = False, 0, ''
+        max=0.999
         while True:
             # Instantiate or reset games memory
             states, next_states, actions, rewards, dones, logp_ts = [], [], [], [], [], []
             for t in range(self.Training_batch):
-                #self.env.render()
                 # Actor picks an action
                 action, logp_t = self.act(state)
                 # Retrieve new state, reward, and whether the state is terminal
                 next_state, reward, done, info = self.env.step(action[0])
+#                self.env.render()
                 # Memorize (state, next_states, action, reward, done, logp_ts) for training
-                print(info)
+                if max<info['lungime']:
+                    print(info)
+                    max=info['lungime']
                 states.append(state)
                 next_states.append(np.reshape(next_state, [1, self.state_size[0]]))
                 actions.append(action)
@@ -502,6 +511,6 @@ class PPOAgent:
 if __name__ == "__main__":
     # newest gym fixed bugs in 'BipedalWalker-v2' and now it's called 'BipedalWalker-v3'
     agent = PPOAgent("HumanoidStandup-v2")
-    #agent.run_batch() # train as PPO
-    agent.run_multiprocesses(num_worker = 2)  # train PPO multiprocessed (fastest)
+    agent.run_batch() # train as PPO
+    #agent.run_multiprocesses(num_worker = 2)  # train PPO multiprocessed (fastest)
     agent.test()

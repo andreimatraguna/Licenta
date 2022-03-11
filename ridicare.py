@@ -24,22 +24,28 @@ class HumanoidStandupEnv(mujoco_env.MujocoEnv, utils.EzPickle):
         )
 
     def step(self, a):
-        self.do_simulation(a, self.frame_skip)
+        self.do_simulation(a, 4)
         data = self.sim.data
-        uph_cost = (data.qpos[3] - 0) / self.model.opt.timestep
-
+        uph_cost = (data.qpos[1] - 0) / self.model.opt.timestep /100
         quad_ctrl_cost = 0.1 * np.square(data.ctrl).sum()
-        quad_impact_cost = 0.5e-6 * np.square(data.cfrc_ext).sum()
-        quad_impact_cost = min(quad_impact_cost, 10)
-        reward = uph_cost - quad_ctrl_cost - quad_impact_cost + 1 + data.qpos[3]/10 - 1
+        miscare=np.sqrt(data.qpos[6]*data.qpos[6]+data.qpos[8]*data.qpos[8])
+        if self.impact>data.qpos[1]:
+            quad_impact_cost = (1+data.qpos[1]%10)-data.qpos[1]
+        elif self.impact==data.qpos[1]:
+            quad_impact_cost = 0
+        else:
+            quad_impact_cost = -1*data.qpos[1]
+            self.impact=data.qpos[1]
+        reward = uph_cost - quad_ctrl_cost - quad_impact_cost-miscare + data.qpos[1]/10 - 1
         done = bool(False)
-        if 0.75<=data.qpos[3]/10 and (time.perf_counter_ns()-self.startsims)>1000000000:
+        if 0.75 <=data.qpos[1]/10 and (time.perf_counter_ns()-self.startsims)<1000000000:
             done = bool(True)
         if (time.perf_counter_ns()-self.startsims)>10000000000:
             self.reset()
-        elif (time.perf_counter_ns()-self.startsims)>3000000000 and data.qpos[3]<5:
+        elif (time.perf_counter_ns()-self.startsims)>2300000000 and data.qpos[1]<5:
             self.reset()
-        self.last=data.qpos[3]/10
+        self.last=data.qpos[1]/10
+        self.impact=data.qpos[1]
         return (
             self._get_obs(),
             reward,
@@ -48,7 +54,7 @@ class HumanoidStandupEnv(mujoco_env.MujocoEnv, utils.EzPickle):
                 reward_linup=uph_cost,
                 reward_quadctrl=-quad_ctrl_cost,
                 reward_impact=-quad_impact_cost,
-                lungime=data.qpos[3]
+                lungime=data.qpos[1]
             ),
         )
     def reset_model(self):
@@ -102,14 +108,14 @@ class HumanoidStandupEnv():
     def step(self, a):
         self.do_simulation(a, self.frame_skip)
         data = self.sim.data
-        uph_cost = (data.qpos[3] - 0) / self.model.opt.timestep
+        uph_cost = (data.qpos[1] - 0) / self.model.opt.timestep
 
         quad_ctrl_cost = 0.1 * np.square(data.ctrl).sum()
         quad_impact_cost = 0.5e-6 * np.square(data.cfrc_ext).sum()
         quad_impact_cost = min(quad_impact_cost, 10)
-        reward = uph_cost - quad_ctrl_cost - quad_impact_cost + 1 + data.qpos[3]/10 - 1
+        reward = uph_cost - quad_ctrl_cost - quad_impact_cost + 1 + data.qpos[1]/10 - 1
         done = bool(False)
-        if 0.9<=data.qpos[3]/10 :
+        if 0.9<=data.qpos[1]/10 :
             if self.drept==None:
                 self.drept=time.perf_counter_ns()
             else:
@@ -119,9 +125,9 @@ class HumanoidStandupEnv():
             self.drept=None
         if (time.perf_counter_ns()-self.startsims)>10000000000:
             self.reset()
-        elif (time.perf_counter_ns()-self.startsims)>3000000000 and data.qpos[3]<5:
+        elif (time.perf_counter_ns()-self.startsims)>3000000000 and data.qpos[1]<5:
             self.reset()
-        self.last=data.qpos[3]/10
+        self.last=data.qpos[1]/10
         return (
             self._get_obs(),
             reward,
@@ -130,7 +136,7 @@ class HumanoidStandupEnv():
                 reward_linup=uph_cost,
                 reward_quadctrl=-quad_ctrl_cost,
                 reward_impact=-quad_impact_cost,
-                sol_distance=data.qpos[3]
+                sol_distance=data.qpos[1]
             ),
         )
     def reset_model(self):
